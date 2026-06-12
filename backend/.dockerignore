@@ -1,0 +1,35 @@
+# Environment files (never bake secrets into the image)
+.env
+.env.*
+
+# Git
+.git
+.gitignore
+
+# Build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test / coverage
+*.test
+*.out
+coverage.*
+
+# IDE / OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docs
+*.md
+
+# Docker files themselves
+docker-compose.yml
+Dockerfile
+.dockerignore

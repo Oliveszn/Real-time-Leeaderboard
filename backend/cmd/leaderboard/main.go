@@ -4,6 +4,7 @@ import (
 	"leaderboard/internal/api"
 	"leaderboard/internal/broker"
 	"leaderboard/internal/config"
+	"leaderboard/internal/leaderboard"
 	"leaderboard/internal/store"
 	"log"
 	"net/http"
@@ -36,9 +37,20 @@ func main() {
 	}
 	log.Println("connected to kafka")
 
+	producer := broker.NewProducer(cfg.KafkaBroker)
+	defer producer.Close()
+
+	//services
+	lbService := leaderboard.NewService(redisClient, pgPool, producer)
+	scoresHandler := api.NewScoresHandler(lbService)
+
 	//Router
 	r := mux.NewRouter()
 	r.HandleFunc("/health", api.HealthHandler).Methods(http.MethodGet)
+
+	r.Handle("/v1/scores",
+		api.APIKeyMiddleware(cfg.APIKey)(http.HandlerFunc(scoresHandler.PostScore)),
+	).Methods(http.MethodPost)
 
 	log.Printf("leaderboard service listening on :%s", cfg.Port)
 	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {

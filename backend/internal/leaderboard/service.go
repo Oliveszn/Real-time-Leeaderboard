@@ -28,11 +28,27 @@ func NewService(rdb *redis.Client, pg *pgxpool.Pool, producer *kafka.Writer) *Se
 	}
 }
 
+// GetTopTen fetches the top 10 players from the Redis sorted set
+func (s *Service) GetTopTen(ctx context.Context) ([]store.RankedEntry, error) {
+	entries, err := store.GetTopN(ctx, s.Redis, 10)
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// GetUserRank fetches a user's rank, score, and their 4 nearest neighbours
+func (s *Service) GetUserRank(ctx context.Context, userID string) (*store.UserRankResult, error) {
+	result, err := store.GetUserRank(ctx, s.Redis, userID)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // UpdateScore applies a score update for user
-// ZINCRYBY on redis (synchronous) leader board reads must reflect this immediately
-// asynchronous write to postgres
-// Async publish to kafka, this drives the real-time wbsocket push
-// retuns the users new total score from redis
+// ZINCRYBY on redis (synchronous) leader board reads must reflect this immediately asynchronous write to postgres
+// Async publish to kafka (drives the real-time wbsocket push)
 func (s *Service) UpdateScore(ctx context.Context, userID string, points int) (float64, error) {
 	newScore, err := store.IncrScore(ctx, s.Redis, userID, points)
 	if err != nil {

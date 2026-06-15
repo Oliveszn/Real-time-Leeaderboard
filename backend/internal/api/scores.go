@@ -6,6 +6,8 @@ import (
 
 	"leaderboard/internal/leaderboard"
 	"leaderboard/internal/models"
+
+	"github.com/gorilla/mux"
 )
 
 type ScoresHandler struct {
@@ -46,4 +48,41 @@ func (h *ScoresHandler) PostScore(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
+}
+
+// GetTopScores handles GET /v1/scores
+// Returns the top 10 players from the leaderboard.
+func (h *ScoresHandler) GetTopScores(w http.ResponseWriter, r *http.Request) {
+	entries, err := h.Service.GetTopTen(r.Context())
+	if err != nil {
+		http.Error(w, `{"error":"failed to fetch leaderboard"}`, http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"data":  entries,
+		"total": len(entries),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// GetUserScore handles GET /v1/scores/:userId
+// Returns the user's rank, score, and 4 nearest neighbours above and below them.
+func (h *ScoresHandler) GetUserScore(w http.ResponseWriter, r *http.Request) {
+	userID := mux.Vars(r)["userId"]
+	if userID == "" {
+		http.Error(w, `{"error":"userId is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.Service.GetUserRank(r.Context(), userID)
+	if err != nil {
+		http.Error(w, `{"error":"user not found or leaderboard unavailable"}`, http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

@@ -38,9 +38,9 @@ func RecordScoreEvent(ctx context.Context, pool *pgxpool.Pool, userID string, po
 	// Ensure the user exists, user_name defaults to user_id
 	_, err = tx.Exec(ctx, `
 		INSERT INTO users (user_id, user_name)
-		VALUES ($1, $1)
+		VALUES ($1::uuid, $2)
 		ON CONFLICT (user_id) DO NOTHING
-	`, userID)
+	`, userID, userID)
 	if err != nil {
 		return fmt.Errorf("ensure user failed: %w", err)
 	}
@@ -48,7 +48,7 @@ func RecordScoreEvent(ctx context.Context, pool *pgxpool.Pool, userID string, po
 	// Log the event
 	_, err = tx.Exec(ctx, `
 		INSERT INTO score_events (user_id, points)
-		VALUES ($1, $2)
+		VALUES ($1::uuid, $2)
 	`, userID, points)
 	if err != nil {
 		return fmt.Errorf("insert score_event failed: %w", err)
@@ -57,7 +57,7 @@ func RecordScoreEvent(ctx context.Context, pool *pgxpool.Pool, userID string, po
 	// Upsert cumulative score
 	_, err = tx.Exec(ctx, `
 		INSERT INTO user_scores (user_id, score, updated_at)
-		VALUES ($1, $2, NOW())
+		VALUES ($1::uuid, $2, NOW())
 		ON CONFLICT (user_id) DO UPDATE
 		SET score = user_scores.score + EXCLUDED.score,
 		    updated_at = NOW()

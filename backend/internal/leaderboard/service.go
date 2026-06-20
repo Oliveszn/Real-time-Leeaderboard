@@ -18,13 +18,67 @@ type Service struct {
 	Redis    *redis.Client
 	Postgres *pgxpool.Pool
 	Producer *kafka.Writer
+
+	writeQueue chan store.ScoreWriteInput
 }
 
 func NewService(rdb *redis.Client, pg *pgxpool.Pool, producer *kafka.Writer) *Service {
-	return &Service{
+	s := &Service{
 		Redis:    rdb,
 		Postgres: pg,
 		Producer: producer,
+
+		//buff channel absorbs write bursts w/o blocking the request path
+		writeQueue: make(chan store.ScoreWriteInput, 5000),
+	}
+
+	go s.runBatchFlusher()
+
+	return s
+}
+
+// runBatchFlusher drains the write queue into Postgres in batches rather than opening a transaction per score event
+func (s *Service) runBatchFlusher() {
+	const (
+		batchSize     = 100
+		flushInterval = 250 * time.Millisecond
+	)
+
+	batch := make([]store.ScoreWriteInput, 0, batchSize)
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		toWrite := make([]store.ScoreWriteInput, len(batch))
+		copy(toWrite, batch)
+		batch = batch[:0]
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := store.RecordScoreEventsBatch(ctx, s.Postgres, toWrite); err != nil {
+			log.Printf("warning: batch postgres write failed (%d events): %v", len(toWrite), err)
+		}
+	}
+
+	for {
+		select {
+		case w, ok := <-s.writeQueue:
+			if !ok {
+				flush()
+				return
+			}
+			batch = append(batch, w)
+			if len(batch) >= batchSize {
+				flush()
+			}
+
+		case <-ticker.C:
+			flush()
+		}
 	}
 }
 
@@ -55,15 +109,13 @@ func (s *Service) UpdateScore(ctx context.Context, userID string, points int) (f
 		return 0, err
 	}
 
-	// Postgres write and kafka publish happens in the background so the api response isnt blocked, each with their ctx
-	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := store.RecordScoreEvent(bgCtx, s.Postgres, userID, points); err != nil {
-			log.Printf("warning: failed to record score event for user %s: %v", userID, err)
-		}
-	}()
+	//non-blocking queue if the queue is full and pg falling being cos of sustained load, we drop the durabillity write
+	//rather than blocking api response, redis remain correct
+	select {
+	case s.writeQueue <- store.ScoreWriteInput{UserID: userID, Points: points}:
+	default:
+		log.Printf("warning: postgres write queue full, dropping event for user %s", userID)
+	}
 
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

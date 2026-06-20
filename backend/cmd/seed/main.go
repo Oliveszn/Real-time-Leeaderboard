@@ -1,3 +1,16 @@
+// cmd/seed is a one-shot data setup script
+//
+// It populates Redis with a fixed batch of fake users (10,000 by default)
+// at random scores, then exits. Its only job is to give the leaderboard
+// something to read before any real traffic has hit it — without this,
+//
+// Run this once before starting cmd/simulator, or any time you want to
+// reset the leaderboard back to a known, predictable state (it wipes the
+// existing sorted set first).
+//
+// Contrast with cmd/simulator, which runs continuously and generates
+// ongoing write/read traffic against an already-running service.
+
 package main
 
 import (

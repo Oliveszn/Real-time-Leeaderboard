@@ -52,6 +52,11 @@ func main() {
 	consumer := broker.NewConsumer(cfg.KafkaBroker)
 	defer consumer.Close()
 
+	// Rebuild Redis leaderboard from Postgres if empty
+	if err := store.RebuildLeaderboard(ctx, pgPool, redisClient); err != nil {
+		log.Fatalf("leaderboard rebuild failed: %v", err)
+	}
+
 	//ws hub
 	hub := ws.NewHub()
 	go hub.Run()
@@ -75,7 +80,6 @@ func main() {
 	r.HandleFunc("/v1/scores/{userId}", scoresHandler.GetUserScore).Methods(http.MethodGet)
 
 	// ws clients connect here for real-time push
-	// Usage: GET /ws?userId=<user_id>
 	r.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		ws.ServeWs(hub, w, r)
 	})

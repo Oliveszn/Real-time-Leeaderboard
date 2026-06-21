@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leaderboard — Live Demo</title>
+    <style>
+      :root {
+        --bg: #0a0e0f;
+        --panel: #111718;
+        --line: #1f2a2c;
+        --text: #e7f1ee;
+        --text-dim: #7c918d;
+        --accent: #5eead4;
+        --accent-dim: #1c3833;
+        --warn: #f5a623;
+        --mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        min-height: 100vh;
+        padding: 32px 20px;
+      }
+
+      .wrap {
+        max-width: 880px;
+        margin: 0 auto;
+      }
+
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 28px;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      h1 {
+        font-size: 20px;
+        font-weight: 600;
+        margin: 0;
+        letter-spacing: -0.01em;
+      }
+
+      h1 span {
+        color: var(--text-dim);
+        font-weight: 400;
+      }
+
+      .status {
+        font-family: var(--mono);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-dim);
+      }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #5a6b67;
+        transition: background 0.2s;
+      }
+
+      .dot.connected {
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent);
+      }
+
+      .dot.error {
+        background: #f06262;
+        box-shadow: 0 0 8px #f06262;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+
+      input,
+      button {
+        font-family: var(--mono);
+        font-size: 13px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 9px 12px;
+      }
+
+      input {
+        flex: 1;
+        min-width: 160px;
+      }
+
+      input::placeholder {
+        color: var(--text-dim);
+      }
+
+      input:focus,
+      button:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      button {
+        cursor: pointer;
+        color: var(--bg);
+        background: var(--accent);
+        border: none;
+        font-weight: 600;
+        transition: opacity 0.15s;
+      }
+
+      button:hover {
+        opacity: 0.85;
+      }
+      button:active {
+        opacity: 0.7;
+      }
+
+      button.secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line);
+        font-weight: 500;
+      }
+
+      button.secondary:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 16px;
+      }
+
+      @media (max-width: 680px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+
+      .panel-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-dim);
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .panel-header .count {
+        font-family: var(--mono);
+        color: var(--accent);
+      }
+
+      .rows {
+        max-height: 480px;
+        overflow-y: auto;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 36px 1fr auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+        font-family: var(--mono);
+        font-size: 13px;
+        transition: background 0.6s ease;
+      }
+
+      .row:last-child {
+        border-bottom: none;
+      }
+
+      .row.flash {
+        background: var(--accent-dim);
+        transition: background 0s;
+      }
+
+      .row .rank {
+        color: var(--text-dim);
+        font-weight: 600;
+      }
+
+      .row.top3 .rank {
+        color: var(--warn);
+      }
+
+      .row .uid {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .row .score {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .empty {
+        padding: 32px 16px;
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 13px;
+      }
+
+      .watch-panel .rows {
+        max-height: none;
+      }
+
+      .watch-summary {
+        padding: 18px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .watch-summary .uid {
+        font-family: var(--mono);
+        font-size: 14px;
+        color: var(--text);
+        margin-bottom: 6px;
+      }
+
+      .watch-summary .rank-big {
+        font-family: var(--mono);
+        font-size: 32px;
+        font-weight: 700;
+        color: var(--accent);
+        line-height: 1;
+      }
+
+      .watch-summary .rank-label {
+        font-size: 11px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-top: 4px;
+      }
+
+      .log {
+        padding: 8px 0;
+      }
+
+      .log-line {
+        padding: 6px 16px;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-dim);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 8px;
+      }
+
+      .log-line:last-child {
+        border-bottom: none;
+      }
+
+      .log-line .tag {
+        color: var(--accent);
+        flex-shrink: 0;
+      }
+
+      .log-line .tag.rank-tag {
+        color: var(--warn);
+      }
+
+      footer {
+        margin-top: 20px;
+        font-size: 11px;
+        color: var(--text-dim);
+        font-family: var(--mono);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Leaderboard <span>/ live demo</span></h1>
+        <div class="status">
+          <div class="dot" id="statusDot"></div>
+          <span id="statusText">disconnected</span>
+        </div>
+      </header>
+
+      <div class="controls">
+        <input
+          type="text"
+          id="apiUrl"
+          placeholder="API base, e.g. http://localhost:8080"
+          value="http://localhost:8080"
+        />
+        <input
+          type="text"
+          id="watchUserId"
+          placeholder="user id to watch, e.g. sim-user-00042"
+        />
+        <button class="secondary" id="connectBtn">Connect</button>
+        <button id="watchBtn">Watch user</button>
+      </div>
+
+      <div class="grid">
+        <div class="panel">
+          <div class="panel-header">
+            <span>Top 10</span>
+            <span class="count" id="topUpdatedAt">—</span>
+          </div>
+          <div class="rows" id="topRows">
+            <div class="empty">Connect to see the live leaderboard</div>
+          </div>
+        </div>
+
+        <div class="panel watch-panel">
+          <div class="panel-header">
+            <span>Watching</span>
+          </div>
+          <div class="watch-summary" id="watchSummary">
+            <div class="uid">No user selected</div>
+            <div class="rank-big">—</div>
+            <div class="rank-label">rank</div>
+          </div>
+          <div class="log" id="eventLog"></div>
+        </div>
+      </div>
+
+      <footer>
+        raw WebSocket connection to /ws — messages logged as they arrive, no
+        polling
+      </footer>
+    </div>
+
+    <script>
+      let ws = null;
+      let watchedUserId = null;
+
+      const statusDot = document.getElementById("statusDot");
+      const statusText = document.getElementById("statusText");
+      const topRows = document.getElementById("topRows");
+      const topUpdatedAt = document.getElementById("topUpdatedAt");
+      const watchSummary = document.getElementById("watchSummary");
+      const eventLog = document.getElementById("eventLog");
+      const apiUrlInput = document.getElementById("apiUrl");
+      const watchUserIdInput = document.getElementById("watchUserId");
+
+      function setStatus(state, label) {
+        statusDot.className = "dot" + (state ? " " + state : "");
+        statusText.textContent = label;
+      }
+
+      function wsUrlFromApi(apiUrl, userId) {
+        const u = new URL(apiUrl);
+        const proto = u.protocol === "https:" ? "wss:" : "ws:";
+        const qs = userId ? "?userId=" + encodeURIComponent(userId) : "";
+        return proto + "//" + u.host + "/ws" + qs;
+      }
+
+      function connect() {
+        const apiUrl = apiUrlInput.value.trim();
+        if (!apiUrl) return;
+
+        if (ws) {
+          ws.close();
+        }
+
+        setStatus(null, "connecting…");
+
+        const target = wsUrlFromApi(apiUrl, watchedUserId);
+        ws = new WebSocket(target);
+
+        ws.onopen = () => setStatus("connected", "connected");
+
+        ws.onclose = () => setStatus(null, "disconnected");
+
+        ws.onerror = () => setStatus("error", "connection error");
+
+        ws.onmessage = (evt) => {
+          let msg;
+          try {
+            msg = JSON.parse(evt.data);
+          } catch {
+            return;
+          }
+          handleMessage(msg);
+        };
+      }
+
+      function handleMessage(msg) {
+        if (msg.type === "leaderboard_update") {
+          renderTop(msg.payload);
+          logEvent(
+            "TOP10",
+            `leaderboard updated — ${msg.payload.length} entries`,
+          );
+        } else if (msg.type === "rank_update") {
+          renderWatch(msg.payload);
+          logEvent(
+            "RANK",
+            `${msg.payload.user_id} now rank ${msg.payload.rank}`,
+            true,
+          );
+        }
+      }
+
+      function renderTop(entries) {
+        topUpdatedAt.textContent = new Date().toLocaleTimeString();
+
+        if (!entries || entries.length === 0) {
+          topRows.innerHTML = '<div class="empty">No entries yet</div>';
+          return;
+        }
+
+        topRows.innerHTML = entries
+          .map((e) => {
+            const top3 = e.rank <= 3 ? " top3" : "";
+            const isWatched = e.user_id === watchedUserId;
+            return `
+        <div class="row${top3}${isWatched ? " flash" : ""}" data-uid="${e.user_id}">
+          <span class="rank">#${e.rank}</span>
+          <span class="uid">${escapeHtml(e.user_id)}</span>
+          <span class="score">${formatScore(e.score)}</span>
+        </div>
+      `;
+          })
+          .join("");
+
+        flashRow(
+          topRows.querySelector(
+            `[data-uid="${CSS.escape(watchedUserId || "")}"]`,
+          ),
+        );
+      }
+
+      function renderWatch(result) {
+        const rankDisplay = result.rank ?? "—";
+        watchSummary.innerHTML = `
+      <div class="uid">${escapeHtml(result.user_id)}</div>
+      <div class="rank-big">#${rankDisplay}</div>
+      <div class="rank-label">rank · score ${formatScore(result.score)}</div>
+    `;
+      }
+
+      function flashRow(el) {
+        if (!el) return;
+        el.classList.add("flash");
+        requestAnimationFrame(() => {
+          setTimeout(() => el.classList.remove("flash"), 50);
+        });
+      }
+
+      function logEvent(tag, text, isRank) {
+        const line = document.createElement("div");
+        line.className = "log-line";
+        line.innerHTML = `<span class="tag${isRank ? " rank-tag" : ""}">${tag}</span><span>${escapeHtml(text)}</span>`;
+        eventLog.prepend(line);
+        while (eventLog.children.length > 30) {
+          eventLog.removeChild(eventLog.lastChild);
+        }
+      }
+
+      function formatScore(n) {
+        return Number(n).toLocaleString();
+      }
+
+      function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      document.getElementById("connectBtn").addEventListener("click", connect);
+
+      document.getElementById("watchBtn").addEventListener("click", () => {
+        const uid = watchUserIdInput.value.trim();
+        if (!uid) return;
+        watchedUserId = uid;
+        watchSummary.innerHTML = `
+      <div class="uid">${escapeHtml(uid)}</div>
+      <div class="rank-big">…</div>
+      <div class="rank-label">waiting for update</div>
+    `;
+        connect();
+      });
+
+      apiUrlInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") connect();
+      });
+      watchUserIdInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") document.getElementById("watchBtn").click();
+      });
+    </script>
+  </body>
+</html>

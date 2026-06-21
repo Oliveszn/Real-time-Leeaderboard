@@ -10,7 +10,7 @@ import (
 
 const LeaderboardKey = "leaderboard"
 
-// NewRedisClient creates a Redis client and verifies the connection with a PING.
+// NewRedisClient creates a Redis client and verifies the connection with a PING
 func NewRedisClient(redisURL string) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr: redisURL,
@@ -58,7 +58,7 @@ func GetTopN(ctx context.Context, rdb *redis.Client, n int) ([]RankedEntry, erro
 // Two Redis commands
 // ZREVRANK  to get the user's position and ZREVRANGE to get neighbour
 func GetUserRank(ctx context.Context, rdb *redis.Client, userID string) (*UserRankResult, error) {
-	// Pipeline both commands to Redis at once
+	// Pipeline both commands to Redis in a single round-trip
 	pipe := rdb.Pipeline()
 	rankCmd := pipe.ZRevRank(ctx, LeaderboardKey, userID)
 	scoreCmd := pipe.ZScore(ctx, LeaderboardKey, userID)
@@ -67,7 +67,7 @@ func GetUserRank(ctx context.Context, rdb *redis.Client, userID string) (*UserRa
 		return nil, fmt.Errorf("rank pipeline failed: %w", err)
 	}
 
-	rank0, err := rankCmd.Result()
+	rank0, err := rankCmd.Result() // 0-based rank from Redis
 	if err == redis.Nil {
 		return nil, fmt.Errorf("user %s not found in leaderboard", userID)
 	}
@@ -80,12 +80,7 @@ func GetUserRank(ctx context.Context, rdb *redis.Client, userID string) (*UserRa
 		return nil, fmt.Errorf("zscore failed: %w", err)
 	}
 
-	// Clamp the neighbour window so we don't go below index 0
-	start := rank0 - 4
-	if start < 0 {
-		start = 0
-	}
-	end := rank0 + 4
+	start, end := neighbourWindow(rank0)
 
 	neighbours, err := rdb.ZRevRangeWithScores(ctx, LeaderboardKey, start, end).Result()
 	if err != nil {
@@ -95,23 +90,45 @@ func GetUserRank(ctx context.Context, rdb *redis.Client, userID string) (*UserRa
 	result := &UserRankResult{
 		UserID: userID,
 		Score:  score,
-		Rank:   int(rank0) + 1, // convert to 1-based
+		Rank:   toOneBasedRank(rank0),
 	}
 
-	for i, z := range neighbours {
+	result.Neighbours = buildNeighbours(neighbours, start, userID)
+
+	return result, nil
+}
+
+// neighbourWindow computes the Redis ZREVRANGE [start, end] bounds for the 4-above/4-below neighbourhood around a given 0-based rank. Clamps start at 0 so users near the top of the leaderboard don't request a negative index
+func neighbourWindow(rank0 int64) (start, end int64) {
+	start = rank0 - 4
+	if start < 0 {
+		start = 0
+	}
+	end = rank0 + 4
+	return start, end
+}
+
+// toOneBasedRank converts Redis's 0-based ZREVRANK result to the 1-based rank shown to clients (rank 0 in Redis == rank 1 on the leaderboard)
+func toOneBasedRank(rank0 int64) int {
+	return int(rank0) + 1
+}
+
+// buildNeighbours converts a raw ZREVRANGE result (starting at absolute index `start`) into RankedEntry rows with correct absolute 1-based ranks, excluding the watched user themselves from the list
+func buildNeighbours(raw []redis.Z, start int64, excludeUserID string) []RankedEntry {
+	var neighbours []RankedEntry
+	for i, z := range raw {
 		memberID := z.Member.(string)
 		absoluteRank := int(start) + i + 1 // 1-based absolute rank
-		if memberID == userID {
-			continue // exclude the user themselves from neighbours
+		if memberID == excludeUserID {
+			continue
 		}
-		result.Neighbours = append(result.Neighbours, RankedEntry{
+		neighbours = append(neighbours, RankedEntry{
 			UserID: memberID,
 			Score:  z.Score,
 			Rank:   absoluteRank,
 		})
 	}
-
-	return result, nil
+	return neighbours
 }
 
 // RankedEntry is a single leaderboard row returned to the client.

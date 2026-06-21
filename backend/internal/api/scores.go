@@ -1,20 +1,28 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
-	"leaderboard/internal/leaderboard"
+	"leaderboard/internal/store"
+	// "leaderboard/internal/leaderboard"
 	"leaderboard/internal/models"
 
 	"github.com/gorilla/mux"
 )
 
-type ScoresHandler struct {
-	Service *leaderboard.Service
+type LeaderboardService interface {
+	UpdateScore(ctx context.Context, userID string, points int) (float64, error)
+	GetTopTen(ctx context.Context) ([]store.RankedEntry, error)
+	GetUserRank(ctx context.Context, userID string) (*store.UserRankResult, error)
 }
 
-func NewScoresHandler(svc *leaderboard.Service) *ScoresHandler {
+type ScoresHandler struct {
+	Service LeaderboardService
+}
+
+func NewScoresHandler(svc LeaderboardService) *ScoresHandler {
 	return &ScoresHandler{Service: svc}
 }
 
